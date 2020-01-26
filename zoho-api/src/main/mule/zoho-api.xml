@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="7baf2eb8-9f1a-49d5-809a-fa9b28e84f94" >
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+	<http:request-config name="HTTP_Request_configuration" doc:name="HTTP Request configuration" doc:id="586c8fb7-8ed8-4332-aa3d-31dc97bab37c" >
+		<http:request-connection protocol="HTTPS" host="accounts.zoho.com" />
+	</http:request-config>
+	<http:request-config name="HTTP_Request_configuration1" doc:name="HTTP Request configuration" doc:id="30d1e006-f2ef-48c5-a307-b9517ab6b3f0" >
+		<http:request-connection protocol="HTTPS" host="meeting.zoho.com" />
+	</http:request-config>
+	<configuration-properties doc:name="Configuration properties" doc:id="0d79a931-2dca-4f92-96c6-aa1d61073901" file="properties\conf.properties" />
+	<flow name="zoho-apiFlow" doc:id="5b3958c4-830c-43a8-82fa-914eb66c19e4" >
+		<http:listener doc:name="Listener" doc:id="04c6843f-a031-4454-a277-b50a379f666f" config-ref="HTTP_Listener_config" path="/getMeeting"/>
+		<http:request method="GET" doc:name="Generate zoho auth token" doc:id="a4e2ca39-4409-4c7f-9f34-2f3b4b550d0d" config-ref="HTTP_Request_configuration" path="/apiauthtoken/nb/create">
+			<http:query-params ><![CDATA[#[output application/java
+---
+{
+	"PASSWORD" : "jivannalavade",
+	"SCOPE" : "ZohoMeeting/meetingapi",
+	"EMAIL_ID" : "jivan.nalavade@apisero.com"
+}]]]></http:query-params>
+		</http:request>
+		<ee:transform doc:name="Set auth token variable" doc:id="baa1dbd3-5d33-4d96-9e4d-dd8e56aaee75" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload
+]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="authToken" ><![CDATA[%dw 2.0
+output application/java
+var t = 31
+---
+payload[42 to 42+t]
+]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="zoho-create-meeting-subflow" doc:id="ab3201ec-5d80-4880-ad08-3288a6a69616" name="zoho-create-meeting-subflow"/>
+	</flow>
+	<sub-flow name="zoho-create-meeting-subflow" doc:id="9edd9690-7a21-47ca-a1e1-2685bf4b89f3" >
+		<http:request method="POST" doc:name="Create Zoho meeting" doc:id="e2e439a0-ef46-40f2-895a-4f99f04b420a" config-ref="HTTP_Request_configuration1" path="/api/private/json/meetings/createMeeting">
+			<http:query-params ><![CDATA[#[output application/java
+---
+{
+	"topic" : vars.authToken,
+	"apikey" : "e16d3274eeafa4a0ff069f4808a2f8e3",
+	"authtoken" : "Value"
+}]]]></http:query-params>
+		</http:request>
+		<set-variable value="#[payload.response.result.meeting.meetingKey]" doc:name="meetingKey" doc:id="e0a24676-00f4-4ba1-a51f-a8c24ecc7824" variableName="meetingKey"/>
+		<http:request method="POST" doc:name="Invite participants for created meeting" doc:id="08787193-f7a3-46e9-93a9-65381ea9eefd" config-ref="HTTP_Request_configuration1" path="/api/private/json/meetings/inviteParticipant">
+			<http:query-params ><![CDATA[#[output application/java
+---
+{
+	"meetingKey" : vars.meetingKey,
+	"inviteeMailId" : "akash.shewale@apisero.com",
+	"sendMail" : "yes",
+	"apikey" : "e16d3274eeafa4a0ff069f4808a2f8e3",
+	"authtoken" : vars.authToken
+}]]]></http:query-params>
+		</http:request>
+		<ee:transform doc:name="Transform Message" doc:id="9e24288f-7925-42aa-b519-8f61e84eb15d">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
